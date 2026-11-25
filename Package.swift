@@ -13,6 +13,7 @@ let package = Package(
                 .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "SkyLight"]),
             ]
         ),
+        .testTarget(name: "HeemacTests", dependencies: ["Heemac"]),
     ],
     swiftLanguageModes: [.v5]
 )
