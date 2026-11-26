@@ -17,7 +17,9 @@ struct Binding {
     ]
 }
 
-/// Global hotkeys via Carbon, which needs no extra permission.
+/// Global hotkeys via Carbon, which needs no extra permission. Carbon delivers
+/// hotkey events on the main thread.
+@MainActor
 final class Hotkeys {
     private var refs: [EventHotKeyRef] = []
     private var actions: [UInt32: () -> Void] = [:]
@@ -33,7 +35,8 @@ final class Hotkeys {
                                            EventParamType(typeEventHotKeyID), nil,
                                            MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID)
             guard status == noErr else { return status }
-            Unmanaged<Hotkeys>.fromOpaque(userData).takeUnretainedValue().actions[hotkeyID.id]?()
+            let id = hotkeyID.id
+            MainActor.assumeIsolated { Unmanaged<Hotkeys>.fromOpaque(userData).takeUnretainedValue().actions[id]?() }
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
     }

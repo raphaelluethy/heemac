@@ -7,10 +7,16 @@ usage: Heemac                    run the menu bar app
        Heemac --login on|off|status   open at login (app bundle only)
 """
 
+func exitWithUsage() -> Never {
+    FileHandle.standardError.write(Data((usage + "\n").utf8))
+    exit(2)
+}
+
 func printWindows() {
     let threshold = Settings.minVisibleFraction
-    let current = Navigator.startingPoint(in: WindowList.visible(minVisibleFraction: threshold)).1
-    for w in WindowList.all() {
+    let windows = WindowList.all()
+    let current = Navigator.startingPoint(in: windows.filter { $0.isStandard && $0.visibleFraction >= threshold }).1
+    for w in windows {
         let mark = w.ids == current?.ids ? "*" : " "
         let state = !w.isStandard ? "panel" : w.visibleFraction >= threshold ? "target" : "hidden"
         let f = w.frame
@@ -37,21 +43,15 @@ case nil:
 case "--windows":
     printWindows()
 case "--focus":
-    guard args.count == 2, let direction = Direction(rawValue: args[1]) else {
-        FileHandle.standardError.write(Data((usage + "\n").utf8))
-        exit(2)
-    }
+    guard args.count == 2, let direction = Direction(rawValue: args[1]) else { exitWithUsage() }
     exit(Navigator.move(direction) ? 0 : 1)
 case "--login":
     switch args.dropFirst().first {
     case "on": exit(LoginItem.set(true) ? 0 : 1)
     case "off": exit(LoginItem.set(false) ? 0 : 1)
     case "status": print(LoginItem.isEnabled ? "on" : "off")
-    default:
-        FileHandle.standardError.write(Data((usage + "\n").utf8))
-        exit(2)
+    default: exitWithUsage()
     }
 default:
-    FileHandle.standardError.write(Data((usage + "\n").utf8))
-    exit(2)
+    exitWithUsage()
 }

@@ -58,15 +58,19 @@ enum Panes {
         let out = Pipe()
         process.standardOutput = out
         process.standardError = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { return nil }
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning, Date() < deadline { usleep(2_000) }
-        if process.isRunning {
-            process.terminate()
+        let kill = DispatchWorkItem { process.terminate() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: kill)
+        // Read while it runs, so output larger than the pipe buffer can't stall it.
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        exited.wait()
+        kill.cancel()
+        guard process.terminationReason == .exit else {
             Navigator.log.error("\(path, privacy: .public) \(args.joined(separator: " "), privacy: .public) timed out")
             return nil
         }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
         return process.terminationStatus == 0 ? data : nil
     }
 }

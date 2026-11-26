@@ -10,18 +10,7 @@ struct FocusedWindow {
 enum Focus {
     /// The window that currently has keyboard focus, as accessibility reports it.
     static func current() -> FocusedWindow? {
-        let systemWide = AXUIElementCreateSystemWide()
-        var appValue: CFTypeRef?
-        var pid: pid_t = 0
-        if AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &appValue) == .success,
-           let appValue {
-            AXUIElementGetPid(appValue as! AXUIElement, &pid)
-        } else if let app = NSWorkspace.shared.frontmostApplication {
-            pid = app.processIdentifier
-        } else {
-            return nil
-        }
-
+        guard let pid = focusedPid() ?? NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
         let axApp = AXUIElementCreateApplication(pid)
         var winValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &winValue) == .success,

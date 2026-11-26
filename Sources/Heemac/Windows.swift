@@ -31,17 +31,27 @@ enum WindowList {
     static let samplesPerAxis = 16
 
     /// Normal windows on the current Spaces, front to back, that are at least
-    /// `minVisibleFraction` visible (not covered by other apps' windows).
+    /// `minVisibleFraction` visible (not covered by other windows).
     static func visible(minVisibleFraction: Double) -> [WindowInfo] {
-        all().filter { $0.isStandard && $0.visibleFraction >= minVisibleFraction }
+        // Hidden windows are dropped before the per-app Accessibility queries,
+        // the slowest part of a scan.
+        markStandard(onScreen().filter { $0.visibleFraction >= minVisibleFraction }).filter(\.isStandard)
     }
 
     /// All candidate windows with their visible fraction, front to back.
     static func all() -> [WindowInfo] {
+        markStandard(onScreen())
+    }
+
+    /// On-screen windows grouped by frame, with their visible fraction.
+    private static func onScreen() -> [WindowInfo] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
         let ownPid = ProcessInfo.processInfo.processIdentifier
         let screens = displayBounds()
+        // One lookup per scan; creating an NSRunningApplication per window is far slower.
+        let policies = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0.activationPolicy) },
+                                  uniquingKeysWith: { first, _ in first })
         var groups: [WindowInfo] = []
 
         for entry in raw {
@@ -55,7 +65,7 @@ enum WindowList {
             let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
             guard alpha > 0.01, frame.width >= minSize, frame.height >= minSize,
                   !excludedOwners.contains(owner),
-                  NSRunningApplication(processIdentifier: pid)?.activationPolicy != .prohibited
+                  policies[pid] != .prohibited
             else { continue }
 
             if let i = groups.firstIndex(where: { $0.pid == pid && $0.frame.isRoughly(frame) }) {
@@ -65,15 +75,21 @@ enum WindowList {
             let fraction = visibleFraction(of: frame, coveredBy: groups.map(\.frame), screens: screens)
             groups.append(WindowInfo(ids: [id], pid: pid, app: owner, frame: frame, visibleFraction: fraction))
         }
-        if AXIsProcessTrusted() {
-            var standardIDs: [pid_t: Set<CGWindowID>] = [:]
-            for i in groups.indices {
-                let pid = groups[i].pid
-                if standardIDs[pid] == nil { standardIDs[pid] = standardWindowIDs(pid: pid) }
-                groups[i].isStandard = groups[i].ids.contains { standardIDs[pid]!.contains($0) }
-            }
-        }
         return groups
+    }
+
+    /// Flags panels, popovers and overlays as non-standard. Without
+    /// Accessibility access every window counts as standard.
+    private static func markStandard(_ windows: [WindowInfo]) -> [WindowInfo] {
+        guard AXIsProcessTrusted() else { return windows }
+        var windows = windows
+        var standardIDs: [pid_t: Set<CGWindowID>] = [:]
+        for i in windows.indices {
+            let pid = windows[i].pid
+            if standardIDs[pid] == nil { standardIDs[pid] = standardWindowIDs(pid: pid) }
+            windows[i].isStandard = !standardIDs[pid]!.isDisjoint(with: windows[i].ids)
+        }
+        return windows
     }
 
     static let standardSubroles: Set<String> = [kAXStandardWindowSubrole as String, kAXDialogSubrole as String]
@@ -100,6 +116,7 @@ enum WindowList {
     /// Share of the window's on-screen area not covered by windows above it,
     /// estimated on a sample grid.
     static func visibleFraction(of frame: CGRect, coveredBy above: [CGRect], screens: [CGRect]) -> Double {
+        let above = above.filter { $0.intersects(frame) }
         var onScreen = 0
         var visible = 0
         let n = samplesPerAxis

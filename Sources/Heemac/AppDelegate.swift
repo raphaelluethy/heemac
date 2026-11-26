@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hotkeys = Hotkeys()
     private var statusItem: NSStatusItem!

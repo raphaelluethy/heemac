@@ -15,5 +15,5 @@ let package = Package(
         ),
         .testTarget(name: "HeemacTests", dependencies: ["Heemac"]),
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

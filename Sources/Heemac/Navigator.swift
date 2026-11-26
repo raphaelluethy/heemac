@@ -1,16 +1,15 @@
 import AppKit
 import os
 
-enum Direction: String, CaseIterable {
+enum Direction: String {
     case left, right, up, down
 }
 
 enum Navigator {
-    static let log = Logger(subsystem: "io.github.raphaelluethy.heemac", category: "navigator")
+    static let log = Logger(subsystem: Settings.domain, category: "navigator")
 
     /// Focuses the nearest visible window in `direction`. Returns false when
     /// there is nothing to move to.
-    @discardableResult
     static func move(_ direction: Direction) -> Bool {
         guard AXIsProcessTrusted() else {
             log.error("no Accessibility permission")
@@ -93,7 +92,12 @@ enum Navigator {
 }
 
 enum Settings {
-    static let defaults = UserDefaults(suiteName: "io.github.raphaelluethy.heemac") ?? .standard
+    static let domain = "io.github.raphaelluethy.heemac"
+    /// The app's own defaults inside the bundle; the same domain when run unbundled
+    /// (macOS rejects a suite named after the running app's own bundle identifier).
+    /// UserDefaults is thread-safe.
+    nonisolated(unsafe) static let defaults = Bundle.main.bundleIdentifier == domain
+        ? .standard : UserDefaults(suiteName: domain) ?? .standard
 
     /// How much of a window must be visible for it to be a target (0...1).
     static var minVisibleFraction: Double {
