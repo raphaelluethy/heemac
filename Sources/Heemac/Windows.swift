@@ -47,11 +47,19 @@ enum WindowList {
     private static func onScreen() -> [WindowInfo] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
-        let ownPid = ProcessInfo.processInfo.processIdentifier
-        let screens = displayBounds()
         // One lookup per scan; creating an NSRunningApplication per window is far slower.
         let policies = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0.activationPolicy) },
                                   uniquingKeysWith: { first, _ in first })
+        return groups(raw, screens: displayBounds(), policies: policies)
+    }
+
+    /// Turns window-server entries (front to back) into focus targets: drops
+    /// non-window layers, tiny or transparent windows, and windows of excluded
+    /// or background-only apps, then merges same-app windows at the same frame.
+    static func groups(_ raw: [[String: Any]], screens: [CGRect],
+                       policies: [pid_t: NSApplication.ActivationPolicy]) -> [WindowInfo]
+    {
+        let ownPid = ProcessInfo.processInfo.processIdentifier
         var groups: [WindowInfo] = []
 
         for entry in raw {
